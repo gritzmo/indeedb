@@ -1,24 +1,26 @@
-{
-  "indeed_email": "user@example.com",
-  "indeed_password": "YourSecurePassword123",
-  "resume_path": "/path/to/resume.pdf",
-
-  "name": "Your Name",
-  "phone": "555-555-5555",
-=======
-
-  "search": {
-    "keywords": "Software Engineer",
-    "location": "New York, NY",
-    "radius": "25",
-    "full_time": true,
-    "remote": false
-  },
-  "max_applications": 50,
-
-  "log_path": "applied_jobs_log.csv",
-  "applied_jobs_path": "applied_jobs.txt"
-=======
-  "log_path": "applied_jobs_log.csv"
-
-}
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a//dev/null b/config.json
+index 0000000000000000000000000000000000000000..31d86bdfadb076a7ddce3fdc703aa72128d7437d 100644
+--- a//dev/null
++++ b/config.json
+@@ -0,0 +1,17 @@
++{
++  "indeed_email": "user@example.com",
++  "indeed_password": "YourSecurePassword123",
++  "resume_path": "/path/to/resume.pdf",
++  "name": "Your Name",
++  "phone": "555-555-5555",
++  "search": {
++    "keywords": "Software Engineer",
++    "location": "New York, NY",
++    "radius": "25",
++    "full_time": true,
++    "remote": false
++  },
++  "max_applications": 50,
++  "log_path": "applied_jobs_log.csv",
++  "applied_jobs_path": "applied_jobs.txt"
++}
+ 
+EOF
+)
