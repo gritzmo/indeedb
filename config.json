@@ -12,5 +12,6 @@
     "remote": false
   },
   "max_applications": 50,
-  "log_path": "applied_jobs_log.csv"
+  "log_path": "applied_jobs_log.csv",
+  "applied_jobs_path": "applied_jobs.txt"
 }

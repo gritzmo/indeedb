@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 
 CONFIG_PATH = 'config.json'
-APPLIED_JOBS_PATH = 'applied_jobs.txt'
+DEFAULT_APPLIED_JOBS_PATH = 'applied_jobs.txt'
 
 
 def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
@@ -58,6 +58,9 @@ def prompt_for_config(existing: dict | None = None) -> dict:
                                           'Max applications per run', '50'))
     cfg['log_path'] = _prompt(existing, 'log_path', 'Log file path',
                               'applied_jobs_log.csv')
+    cfg['applied_jobs_path'] = _prompt(
+        existing, 'applied_jobs_path', 'Applied jobs file',
+        DEFAULT_APPLIED_JOBS_PATH)
 
     return cfg
 
@@ -131,14 +134,14 @@ def search_jobs(driver: webdriver.Chrome, search_params: dict) -> None:
     # Additional filters can be applied here if needed
 
 
-def load_applied_jobs(path: str = APPLIED_JOBS_PATH) -> set:
+def load_applied_jobs(path: str = DEFAULT_APPLIED_JOBS_PATH) -> set:
     if not os.path.exists(path):
         return set()
     with open(path, 'r', encoding='utf-8') as f:
         return set(line.strip() for line in f if line.strip())
 
 
-def save_applied_job(job_id: str, path: str = APPLIED_JOBS_PATH) -> None:
+def save_applied_job(job_id: str, path: str = DEFAULT_APPLIED_JOBS_PATH) -> None:
     with open(path, 'a', encoding='utf-8') as f:
         f.write(job_id + '\n')
 
@@ -207,7 +210,8 @@ def apply_to_job(driver: webdriver.Chrome, job_link: str, config: dict) -> bool:
 
 def main():
     config = load_config()
-    applied_jobs = load_applied_jobs()
+    applied_jobs_path = config.get('applied_jobs_path', DEFAULT_APPLIED_JOBS_PATH)
+    applied_jobs = load_applied_jobs(applied_jobs_path)
     driver = setup_driver()
     try:
         login(driver, config['indeed_email'], config['indeed_password'])
@@ -237,7 +241,7 @@ def main():
                 status = 'failed'
                 if apply_to_job(driver, link, config):
                     applied_jobs.add(job_id)
-                    save_applied_job(job_id)
+                    save_applied_job(job_id, applied_jobs_path)
                     status = 'applied'
                     applied_count += 1
                 save_log(log_path, {

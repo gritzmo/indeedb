@@ -12,3 +12,7 @@ This repository contains a sample Selenium script for automatically applying to 
     python indeed_easy_apply.py
     ```
    On the first run you will be prompted to enter your Indeed credentials, personal details, and search parameters. These settings are saved to `config.json`. On subsequent runs you can choose to update them before the automation begins.
+
+   Windows users can launch the script via `run_easy_apply.bat`.
+
+   The configuration file will include paths for the application log and for the list of already applied jobs (`applied_jobs_path`).
