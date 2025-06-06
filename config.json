@@ -1,0 +1,10 @@
+{
+  "indeed_email": "user@example.com",
+  "indeed_password": "YourSecurePassword123",
+  "resume_path": "C:/Users/You/Documents/resume.pdf",
+  "search_keywords": "Software Engineer",
+  "min_salary": 17,
+  "locations": ["Pawtucket, RI", "Providence, RI", "Cranston, RI", "Lincoln, RI"],
+  "max_applications": 50,
+  "log_path": "applied_jobs_log.csv"
+}
