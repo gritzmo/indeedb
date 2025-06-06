@@ -1,14 +1,12 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a//dev/null b/config.json
-index 0000000000000000000000000000000000000000..31d86bdfadb076a7ddce3fdc703aa72128d7437d 100644
---- a//dev/null
-+++ b/config.json
-@@ -0,0 +1,17 @@
-+{
-+  "indeed_email": "user@example.com",
-+  "indeed_password": "YourSecurePassword123",
-+  "resume_path": "/path/to/resume.pdf",
-+  "name": "Your Name",
+  "notification_email": "notifyme@example.com",
+  "smtp_server": "smtp.example.com",
+  "smtp_port": 587,
+  "smtp_username": "smtp_user",
+  "smtp_password": "smtp_password",
+  "search_keywords": "Software Engineer",
+  "min_salary": 17,
+  "locations": ["Pawtucket, RI", "Providence, RI", "Cranston, RI", "Lincoln, RI"],
+  "log_path": "applied_jobs_log.csv"
 +  "phone": "555-555-5555",
 +  "search": {
 +    "keywords": "Software Engineer",

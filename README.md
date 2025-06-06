@@ -1,12 +1,15 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/README.md b/README.md
-index 5590f7b329eddc80b9b397d29c3c581a5c29419e..3dbc8a908b1e4a4ae9a894e4170ccf60266c47f5 100644
---- a/README.md
-+++ b/README.md
-@@ -1 +1,18 @@
--# indeedb
-+# indeedb
-+
+This repository contains a Selenium script that automatically applies to \
+"Easily apply" jobs on Indeed. Configuration values such as login details, \
+search keywords, allowed locations, and email notifications are stored in \
+`config.json`.
+2. Edit `config.json` with your Indeed credentials, SMTP details, search \
+   keywords, and other settings.
+3. Run the script:
+   ```bash
+   python indeed_easy_apply.py
+   ```
+   Windows users can run `run_easy_apply.bat` instead.
+Each application attempt is logged to the CSV file specified by `log_path`.
 +This repository contains a sample Selenium script for automatically applying to "Easily apply" jobs on Indeed. The script uses a configuration file (`config.json`) that is created on first run to store your credentials and search preferences. Each application attempt is logged to a CSV file.
 +
 +## Usage

@@ -1,218 +1,193 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a//dev/null b/indeed_easy_apply.py
-index 0000000000000000000000000000000000000000..14c9ca681ca75da13967d15b1b44ebaa03fb41dc 100644
---- a//dev/null
-+++ b/indeed_easy_apply.py
-@@ -0,0 +1,295 @@
-+import json
-+import csv
-+import os
-+import time
-+from datetime import datetime
-+
-+from selenium import webdriver
-+from selenium.webdriver.common.by import By
-+from selenium.webdriver.common.keys import Keys
-+from selenium.webdriver.support.ui import WebDriverWait
-+from selenium.webdriver.support import expected_conditions as EC
-+
-+
-+CONFIG_PATH = 'config.json'
-+DEFAULT_APPLIED_JOBS_PATH = 'applied_jobs.txt'
-+# Default timeout for waiting on elements
-+WAIT_TIME = 20
-+
-+
-+def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
-+    """Save configuration to a JSON file."""
-+    with open(path, 'w', encoding='utf-8') as f:
-+        json.dump(cfg, f, indent=2)
-+
-+
-+def _prompt(current: dict, key: str, message: str, default: str | None = None) -> str:
-+    default_val = current.get(key, default)
-+    prompt_msg = f"{message}"
-+    if default_val not in [None, '']:
-+        prompt_msg += f" [{default_val}]"
-+    prompt_msg += ": "
-+    response = input(prompt_msg).strip()
-+    return response if response else str(default_val or '')
-+
-+
-+def prompt_for_config(existing: dict | None = None) -> dict:
-+    """Interactively ask the user for configuration values."""
-+    if existing is None:
-+        existing = {}
-+    cfg: dict = {}
-+
-+    cfg['indeed_email'] = _prompt(existing, 'indeed_email', 'Indeed email')
-+    cfg['indeed_password'] = _prompt(existing, 'indeed_password', 'Indeed password')
-+    cfg['resume_path'] = _prompt(existing, 'resume_path', 'Path to resume file')
-+    cfg['name'] = _prompt(existing, 'name', 'Full name')
-+    cfg['phone'] = _prompt(existing, 'phone', 'Phone number')
-+
-+    search_existing = existing.get('search', {})
-+    search: dict = {}
-+    search['keywords'] = _prompt(search_existing, 'keywords', 'Job keywords')
-+    search['location'] = _prompt(search_existing, 'location', 'Job location')
-+    search['radius'] = _prompt(search_existing, 'radius', 'Radius miles', '25')
-+    ft = _prompt(search_existing, 'full_time', 'Full time only? (y/n)', 'y')
-+    search['full_time'] = ft.lower().startswith('y')
-+    rm = _prompt(search_existing, 'remote', 'Remote only? (y/n)', 'n')
-+    search['remote'] = rm.lower().startswith('y')
-+    cfg['search'] = search
-+
-+    cfg['max_applications'] = int(_prompt(existing, 'max_applications',
-+                                          'Max applications per run', '50'))
-+    cfg['log_path'] = _prompt(existing, 'log_path', 'Log file path',
-+                              'applied_jobs_log.csv')
-+    cfg['applied_jobs_path'] = _prompt(
-+        existing, 'applied_jobs_path', 'Applied jobs file',
-+        DEFAULT_APPLIED_JOBS_PATH)
-+
-+    return cfg
-+
-+
-+def load_config(path: str = CONFIG_PATH) -> dict:
-+    """Load configuration, prompting the user if necessary."""
-+    if os.path.exists(path):
-+        with open(path, 'r', encoding='utf-8') as f:
-+            cfg = json.load(f)
-+        print(f"Loaded configuration from {path}.")
-+        change = input("Do you want to edit these settings? (y/N): ").strip().lower()
-+        if change == 'y':
-+            cfg = prompt_for_config(cfg)
-+            save_config(cfg, path)
-+    else:
-+        print(f"Configuration file '{path}' not found. Let's create one.")
-+        cfg = prompt_for_config()
-+        save_config(cfg, path)
-+    return cfg
-+
-+
-+def setup_driver() -> webdriver.Chrome:
-+    """Setup Chrome WebDriver."""
-+    options = webdriver.ChromeOptions()
-+    options.add_argument('--start-maximized')
-+    driver = webdriver.Chrome(options=options)
-+    return driver
-+
-+
-+def login(driver: webdriver.Chrome, email: str, password: str) -> None:
-+    """Login to Indeed with given credentials."""
-+    driver.get('https://secure.indeed.com/account/login')
-+    wait = WebDriverWait(driver, WAIT_TIME)
-+    # Wait for email field
-+    email_field = wait.until(
-+        EC.presence_of_element_located((By.ID, 'login-email-input'))
-+    )
-+    email_field.clear()
-+    email_field.send_keys(email)
-+
-+    password_field = driver.find_element(By.ID, 'login-password-input')
-+    password_field.clear()
-+    password_field.send_keys(password)
-+
-+    driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
-+
-+    # Wait until login completes (e.g., profile avatar visible)
-+    wait.until(EC.presence_of_element_located((By.ID, 'gnav-header-inner')))
-+
-+
-+def search_jobs(driver: webdriver.Chrome, search_params: dict) -> None:
-+    """Perform a job search using Indeed's search form."""
-+    driver.get('https://www.indeed.com')
-+    wait = WebDriverWait(driver, WAIT_TIME)
-+
-+    what_field = wait.until(
-+        EC.presence_of_element_located((By.ID, 'text-input-what'))
-+    )
-+    where_field = driver.find_element(By.ID, 'text-input-where')
-+
-+    what_field.clear()
-+    what_field.send_keys(search_params.get('keywords', ''))
-+
-+    where_field.clear()
-+    where_field.send_keys(search_params.get('location', ''))
-+    where_field.send_keys(Keys.RETURN)
-+
-+    # Wait for results to load
-+    wait.until(EC.presence_of_element_located((By.ID, 'resultsCol')))
-+
-+    # Additional filters can be applied here if needed
-+
-+
-+def load_applied_jobs(path: str = DEFAULT_APPLIED_JOBS_PATH) -> set:
-+    if not os.path.exists(path):
-+        return set()
-+    with open(path, 'r', encoding='utf-8') as f:
-+        return set(line.strip() for line in f if line.strip())
-+
-+
-+def save_applied_job(job_id: str, path: str = DEFAULT_APPLIED_JOBS_PATH) -> None:
-+    with open(path, 'a', encoding='utf-8') as f:
-+        f.write(job_id + '\n')
-+
-+
-+def save_log(log_path: str, data: dict) -> None:
-+    """Append a row to the CSV log file."""
-+    file_exists = os.path.isfile(log_path)
-+    with open(log_path, 'a', newline='', encoding='utf-8') as csvfile:
-+        fieldnames = ['timestamp', 'job_title', 'company', 'status']
-+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-+        if not file_exists:
-+            writer.writeheader()
-+        writer.writerow(data)
-+
-+
-+def get_easy_apply_jobs(driver: webdriver.Chrome, seen_ids: set) -> list[dict]:
-+    """Return list of new Easy Apply job info dictionaries."""
-+    jobs = []
-+    # Locate job cards that contain the "Easily apply" badge
-+    elements = driver.find_elements(
-+        By.XPATH,
-+        "//span[contains(text(),'Easily apply')]/ancestor::a[@data-jk]",
-+    )
-+    for el in elements:
-+        job_id = el.get_attribute('data-jk')
-+        # Skip jobs we've already applied to
-+        if not job_id or job_id in seen_ids:
-+            continue
-+        jobs.append({
-+            'id': job_id,
-+            'link': el.get_attribute('href'),
-+            'title': el.text.strip().split('\n')[0],
-+            'company': ''
-+        })
-+    return jobs
-+
-+
-+def apply_to_job(driver: webdriver.Chrome, job_link: str, config: dict) -> bool:
-+    """Open a job link and attempt to apply if possible."""
-+    # Open job in a new tab so we can return to the results page later
-+    driver.execute_script("window.open(arguments[0], '_blank');", job_link)
-+    driver.switch_to.window(driver.window_handles[-1])
-+    wait = WebDriverWait(driver, WAIT_TIME)
-+    applied = False
-+    try:
-+        # Wait for a button that either says Apply or Submit
-+        apply_btn = wait.until(
-+            EC.element_to_be_clickable(
-+                (By.XPATH, "//button[contains(., 'Apply') or contains(., 'Submit')]")
-+            )
-+        )
-+        apply_btn.click()
-+
-+        # Upload resume if a file input is present
-+        try:
-+            file_input = wait.until(
-+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']"))
-+            )
-+            file_input.send_keys(config['resume_path'])
-+        except Exception:
-+            # Not all applications require a resume upload
-+            pass
-+
+import json
+import re
+import smtplib
+from email.message import EmailMessage
+from selenium.webdriver.support.ui import WebDriverWait
+CONFIG_PATH = "config.json"
+APPLIED_JOBS_PATH = "applied_jobs.txt"
+LOGIN_RETRIES = 3
+    """Load configuration from JSON file."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+    """Return a maximized Chrome WebDriver."""
+    options.add_argument("--start-maximized")
+    return webdriver.Chrome(options=options)
+    """Perform a single login attempt."""
+    driver.get("https://secure.indeed.com/account/login")
+    email_field = wait.until(EC.element_to_be_clickable((By.ID, "login-email-input")))
+    pw_field = driver.find_element(By.ID, "login-password-input")
+    pw_field.clear()
+    pw_field.send_keys(password)
+    driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+    # success when the global nav header loads
+    wait.until(EC.presence_of_element_located((By.ID, "gnav-header-inner")))
+
+
+def login_with_retry(driver: webdriver.Chrome, email: str, password: str, retries: int = LOGIN_RETRIES) -> None:
+    """Attempt to log in multiple times before failing."""
+    last_error: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            login(driver, email, password)
+            return
+        except Exception as exc:  # noqa: PERF203
+            last_error = exc
+            print(f"Login attempt {attempt} failed: {exc}")
+            time.sleep(2)
+    raise RuntimeError("Unable to log in after multiple attempts") from last_error
+def search_jobs_for_city(driver: webdriver.Chrome, keywords: str, city: str) -> None:
+    """Search Indeed for keywords in a specific city."""
+    driver.get("https://www.indeed.com")
+    wait = WebDriverWait(driver, WAIT_TIME)
+    what = wait.until(EC.element_to_be_clickable((By.ID, "text-input-what")))
+    where = driver.find_element(By.ID, "text-input-where")
+    what.clear()
+    what.send_keys(keywords)
+    where.clear()
+    where.send_keys(city)
+    where.send_keys(Keys.RETURN)
+    wait.until(EC.presence_of_element_located((By.ID, "resultsCol")))
+def load_applied_jobs(path: str = APPLIED_JOBS_PATH) -> set[str]:
+    if not os.path.exists(path):
+        return set()
+    with open(path, "r", encoding="utf-8") as f:
+        return set(line.strip() for line in f if line.strip())
+def save_applied_job(job_id: str, path: str = APPLIED_JOBS_PATH) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(job_id + "\n")
+def save_log(path: str, data: dict) -> None:
+    file_exists = os.path.isfile(path)
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["timestamp", "job_title", "company", "city", "status"],
+        )
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(data)
+def send_email_notification(cfg: dict, title: str, company: str, city: str) -> None:
+    msg = EmailMessage()
+    msg["Subject"] = f"Indeed Bot: Applied to {title} at {company}"
+    msg["From"] = cfg["smtp_username"]
+    msg["To"] = cfg["notification_email"]
+    msg.set_content(
+        f"Your automated bot has successfully applied to {title} at {company} in {city} on {datetime.utcnow().isoformat()}."
+    )
+    try:
+        with smtplib.SMTP(cfg["smtp_server"], cfg["smtp_port"]) as server:
+            server.starttls()
+            server.login(cfg["smtp_username"], cfg["smtp_password"])
+            server.send_message(msg)
+    except Exception as exc:
+        print(f"Failed to send notification email: {exc}")
+
+
+def parse_salary(text: str) -> float | None:
+    """Return the numeric lower bound of a salary string."""
+    numbers = re.findall(r"\$([\d,.]+)", text)
+    if not numbers:
+        return None
+    try:
+        return float(numbers[0].replace(",", ""))
+    except ValueError:
+        return None
+def is_valid_job_type(page_text: str) -> bool:
+    text = page_text.lower()
+    if any(word in text for word in ["contract", "temporary", "internship"]):
+        return False
+    return "full-time" in text or "part-time" in text
+def meets_salary_requirement(text: str, minimum: float) -> bool:
+    salary = parse_salary(text)
+    return salary is not None and salary >= minimum
+def extract_salary(driver: webdriver.Chrome) -> str | None:
+    try:
+        el = driver.find_element(By.CSS_SELECTOR, ".salary-snippet")
+        return el.text
+    except Exception:
+        return None
+def get_easy_apply_jobs(driver: webdriver.Chrome, seen: set[str]) -> list[dict]:
+    jobs: list[dict] = []
+        By.XPATH, "//span[contains(text(),'Easily apply')]/ancestor::a[@data-jk]"
+        jid = el.get_attribute("data-jk")
+        if not jid or jid in seen:
+            "id": jid,
+            "link": el.get_attribute("href"),
+            "title": el.text.strip().split("\n")[0],
+            "company": "",
+def apply_to_job(
+    driver: webdriver.Chrome, job: dict, city: str, cfg: dict
+) -> str:
+    """Attempt to apply to a job and return status string."""
+    link = job["link"]
+    driver.execute_script("window.open(arguments[0], '_blank');", link)
+    status = "Skipped"
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        page_text = driver.page_source
+        if not is_valid_job_type(page_text):
+            status = "Skipped"
+            return status
+        salary_text = extract_salary(driver)
+        if not salary_text or not meets_salary_requirement(salary_text, cfg["min_salary"]):
+            status = "Skipped"
+            return status
+        apply_button = wait.until(
+        apply_button.click()
+            file_input.send_keys(cfg["resume_path"])
+        try:
+            submit_btn = wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Submit')]")
+            ))
+            submit_btn.click()
+            wait.until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        "//*[contains(text(),'application has been submitted') or contains(text(),'applied') or contains(text(),'Thank you')]",
+                    )
+            status = "Applied"
+        except Exception as exc:  # noqa: PERF203
+            status = "Error"
+            print(f"Error submitting application: {exc}")
+        if status == "Applied":
+            send_email_notification(cfg, job["title"], job["company"], city)
+    except Exception as exc:
+        status = "Error"
+        print(f"Failed processing job {link}: {exc}")
+    return status
+def main() -> None:
+    cfg = load_config()
+    applied_jobs = load_applied_jobs()
+    log_path = cfg.get("log_path", "applied_jobs_log.csv")
+    max_apps = cfg.get("max_applications", 50)
+    count = 0
+        login_with_retry(driver, cfg["indeed_email"], cfg["indeed_password"])
+        for city in cfg["locations"]:
+            if count >= max_apps:
+            search_jobs_for_city(driver, cfg["search_keywords"], city)
+            while count < max_apps:
+                jobs = get_easy_apply_jobs(driver, applied_jobs)
+                if not jobs:
+                for job in jobs:
+                    if count >= max_apps:
+                        break
+                    status = apply_to_job(driver, job, city, cfg)
+                    if status == "Applied":
+                        applied_jobs.add(job["id"])
+                        save_applied_job(job["id"])
+                        count += 1
+                    save_log(
+                        log_path,
+                        {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "job_title": job["title"],
+                            "company": job["company"],
+                            "city": city,
+                            "status": status,
+                        },
+                    )
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+if __name__ == "__main__":
 +        # Fill common application fields if present
 +        for field_id, value in {
 +            'applicant.name': config.get('name', ''),
