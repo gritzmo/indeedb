@@ -5,8 +5,12 @@ import re
 import time
 from datetime import datetime
 
+
 import logging
 import undetected_chromedriver as uc
+
+
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -20,8 +24,10 @@ except ImportError:  # pragma: no cover - optional dependency
 CONFIG_PATH = "config.json"
 APPLIED_JOBS_PATH = "applied_jobs.txt"
 WAIT_TIME = 20
+
 LOGIN_WAIT = 120
 COOKIES_PATH = "cookies.json"
+
 
 
 def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
@@ -32,6 +38,7 @@ def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
 def prompt_for_config() -> dict:
     print("[Config setup]")
     cfg = {
+
         "resume_path": input("Path to resume PDF: ").strip(),
         "search_keywords": input("Search keywords: ").strip() or "Software Engineer",
         "min_salary": float(input("Minimum hourly wage (e.g. 17): ").strip() or "17"),
@@ -57,6 +64,7 @@ def load_config(path: str = CONFIG_PATH) -> dict:
     return cfg
 
 
+
 def setup_driver() -> uc.Chrome:
     """Return a maximized undetected Chrome WebDriver."""
     options = uc.ChromeOptions()
@@ -66,7 +74,15 @@ def setup_driver() -> uc.Chrome:
     return driver
 
 
-def save_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> None:
+def save_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> None::
+    """Return a maximized Chrome WebDriver."""
+    options = webdriver.ChromeOptions()
+    options.add_argument("--start-maximized")
+    return webdriver.Chrome(options=options)
+
+
+def save_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> None:
+
     """Persist browser cookies to a JSON file."""
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -93,6 +109,7 @@ def load_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> bool:
         return True
     except Exception:
         return False
+
 
 
 def manual_google_login(driver: uc.Chrome) -> None:
@@ -131,6 +148,7 @@ def manual_google_login(driver: uc.Chrome) -> None:
 
 
 def search_jobs_for_city(driver: uc.Chrome, keywords: str, city: str) -> None:
+
     """Search Indeed for keywords in a specific city."""
     print(f"[Searching for '{keywords}' in {city}]")
     driver.get("https://www.indeed.com")
@@ -200,6 +218,7 @@ def extract_salary(driver: uc.Chrome) -> str | None:
         return el.text
     except Exception:
         return None
+
 
 
 def extract_job_type(driver: uc.Chrome) -> str | None:
@@ -365,8 +384,8 @@ def apply_to_job(
         except Exception:
             pass
 
-        # Handle common form elements before final submission
         fill_additional_fields(driver)
+        
         try:
             submit_btn = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Submit')]")
@@ -412,7 +431,10 @@ def main() -> None:
     max_apps = cfg.get("max_applications", 50)
     count = 0
     try:
+
         manual_google_login(driver)
+
+
         for city in cfg["locations"]:
             if count >= max_apps:
                 break
