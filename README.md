@@ -4,17 +4,19 @@ This repository contains a Selenium script that automatically applies to
 "Easily apply" jobs on Indeed. Configuration values such as resume path,
 allowed locations, and logging are stored in `config.json`.
 
+## Usage
+1. Install dependencies:
+   ```bash
+   pip install selenium win10toast geopy
 
    ```
 2. Run the script for the first time to create `config.json`. The program will
    prompt you for your settings and save them for future runs. You can choose to
    update them each time the script starts.
-
-3. The script launches Chrome using your existing profile (edit the `USER_DATA_DIR`
-   and `PROFILE_DIR` constants in `indeed_easy_apply.py` if needed). Ensure
-   you're already logged in to Indeed in that profile. When the browser opens the
-   bot prints `[Using Chrome profile. Please confirm you're logged in.]`
-   and waits until the search field appears before continuing.
+3. The script launches Chrome using a dedicated profile directory defined by
+   `USER_DATA_DIR` in `indeed_easy_apply.py`. When the browser opens, the bot
+   checks for a "Sign in" link. If it's present, you'll see a prompt to log in
+   manually, and the bot waits until the link disappears before continuing.
 4. Run the script:
 
    ```bash
@@ -40,8 +42,7 @@ Example `config.json`:
 }
 ```
 
-
-The script uses your existing Chrome profile for authentication. If Chrome is
-installed in a different location or you use another profile, update the
-`USER_DATA_DIR` and `PROFILE_DIR` constants at the top of `indeed_easy_apply.py`.
+The script stores its own Chrome user data in the folder defined by
+`USER_DATA_DIR` at the top of `indeed_easy_apply.py`. If Chrome is installed in
+a different location, edit that constant accordingly.
 

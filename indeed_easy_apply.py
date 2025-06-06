@@ -5,9 +5,9 @@ import re
 import time
 from datetime import datetime
 
-
 import logging
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.common.exceptions import SessionNotCreatedException
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
 
@@ -25,9 +25,9 @@ CONFIG_PATH = "config.json"
 APPLIED_JOBS_PATH = "applied_jobs.txt"
 WAIT_TIME = 20
 LOGIN_CHECK_WAIT = 120
-# Path to your Chrome user data directory and profile
-USER_DATA_DIR = "C:/Users/Jesse/AppData/Local/Google/Chrome/User Data"
-PROFILE_DIR = "Profile 1"
+# Path to the bot's dedicated Chrome user data directory
+USER_DATA_DIR = "C:/Users/Jesse/AppData/Local/Google/Chrome/BotProfile"
+
 
 GEOLOCATOR = Nominatim(user_agent="indeed-bot")
 
@@ -66,32 +66,28 @@ def load_config(path: str = CONFIG_PATH) -> dict:
     return cfg
 
 
-def setup_driver() -> uc.Chrome:
-    """Return a Chrome WebDriver using the existing user profile."""
-    options = uc.ChromeOptions()
+def setup_driver() -> webdriver.Chrome:
+    """Create a Chrome WebDriver using a dedicated user profile."""
+    options = webdriver.ChromeOptions()
     options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
-    options.add_argument(f"--profile-directory={PROFILE_DIR}")
+    # Avoid reusing the default profile to prevent conflicts
     options.add_argument("--start-maximized")
     options.add_argument("--disable-blink-features=AutomationControlled")
-
-    driver = uc.Chrome(options=options)
-    logging.getLogger("undetected_chromedriver").setLevel(logging.WARNING)
+    try:
+        driver = webdriver.Chrome(options=options)
+    except SessionNotCreatedException:
+        print(
+            "[Chrome session couldn’t be created—check ChromeDriver/Chrome versions or profile path]"
+        )
+        raise
+    print("[Launched Chrome and navigating to Indeed.com...]")
+    driver.get("https://www.indeed.com")
     return driver
 
 
-def ensure_logged_in(driver: uc.Chrome) -> None:
-    """Open Indeed using the existing Chrome session and wait for login."""
-    driver.get("https://www.indeed.com")
-    print("[Using Chrome profile. Please confirm you're logged in.]")
-    WebDriverWait(driver, LOGIN_CHECK_WAIT).until(
-        EC.presence_of_element_located((By.ID, "text-input-what"))
-    )
-    print("[Login successful - continuing bot]")
 
 
-
-
-def search_jobs_for_city(driver: uc.Chrome, city: str) -> None:
+def search_jobs_for_city(driver: webdriver.Chrome, city: str) -> None:
     """Search Indeed for any jobs in a specific city."""
     print(f"[Searching in {city}]")
     driver.get("https://www.indeed.com")
@@ -99,7 +95,7 @@ def search_jobs_for_city(driver: uc.Chrome, city: str) -> None:
     what = wait.until(EC.element_to_be_clickable((By.ID, "text-input-what")))
     where = driver.find_element(By.ID, "text-input-where")
     what.clear()
-
+    # leave keywords blank for a broad search
     where.clear()
     where.send_keys(city)
     where.send_keys(Keys.RETURN)
@@ -182,8 +178,8 @@ def calculate_distance(addr1: str, addr2: str) -> float | None:
     return round(geodesic(loc1, loc2).miles, 1)
 
 
+def extract_salary(driver: webdriver.Chrome) -> str | None:
 
-def extract_salary(driver: uc.Chrome) -> str | None:
     try:
         el = driver.find_element(By.CSS_SELECTOR, ".salary-snippet")
         return el.text
@@ -191,8 +187,8 @@ def extract_salary(driver: uc.Chrome) -> str | None:
         return None
 
 
+def extract_job_type(driver: webdriver.Chrome) -> str | None:
 
-def extract_job_type(driver: uc.Chrome) -> str | None:
     """Return the job type text if available."""
     try:
         key = driver.find_element(
@@ -209,7 +205,8 @@ def extract_job_type(driver: uc.Chrome) -> str | None:
         return None
 
 
-def extract_location(driver: uc.Chrome) -> str | None:
+def extract_location(driver: webdriver.Chrome) -> str | None:
+
     """Return job location text if possible."""
     selectors = [
         ".jobsearch-JobInfoHeader-subtitle div",
@@ -226,8 +223,8 @@ def extract_location(driver: uc.Chrome) -> str | None:
     return None
 
 
+def fill_additional_fields(driver: webdriver.Chrome) -> None:
 
-def fill_additional_fields(driver: uc.Chrome) -> None:
     """Handle common form fields during applications."""
     # Text inputs and textareas
     fields = driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='tel'], textarea, input:not([type])")
@@ -298,7 +295,8 @@ def fill_additional_fields(driver: uc.Chrome) -> None:
             print("[Unknown form element skipped]")
 
 
-def get_easy_apply_jobs(driver: uc.Chrome, seen: set[str], cfg: dict) -> list[dict]:
+def get_easy_apply_jobs(driver: webdriver.Chrome, seen: set[str], cfg: dict) -> list[dict]:
+
     jobs: list[dict] = []
     elements = driver.find_elements(
         By.XPATH, "//span[contains(text(),'Easily apply')]/ancestor::a[@data-jk]"
@@ -334,7 +332,8 @@ def get_easy_apply_jobs(driver: uc.Chrome, seen: set[str], cfg: dict) -> list[di
 
 
 def apply_to_job(
-    driver: uc.Chrome, job: dict, city: str, cfg: dict
+    driver: webdriver.Chrome, job: dict, city: str, cfg: dict
+
 ) -> tuple[str, float | None]:
     """Attempt to apply to a job and return (status, distance)."""
     link = job["link"]
@@ -422,18 +421,33 @@ def apply_to_job(
     return status, distance
 
 
+def ensure_logged_in(driver: webdriver.Chrome) -> None:
+    """Detect login state and wait for manual login if needed."""
+    short_wait = WebDriverWait(driver, 5)
+    try:
+        short_wait.until(EC.presence_of_element_located((By.LINK_TEXT, "Sign in")))
+        print("[Not logged in – please log in manually]")
+        WebDriverWait(driver, LOGIN_CHECK_WAIT).until(
+            EC.invisibility_of_element_located((By.LINK_TEXT, "Sign in"))
+        )
+        print("[Login detected – continuing bot]")
+    except Exception:
+        print("[Already logged in – proceeding to search]")
+
 
 def main() -> None:
     print("[Starting Indeed bot]")
     cfg = load_config()
     applied_jobs = load_applied_jobs()
     driver = setup_driver()
+    ensure_logged_in(driver)
+
     log_path = cfg.get("log_path", "applied_jobs_log.csv")
     max_apps = cfg.get("max_applications", 50)
     count = 0
     print(f"[Remaining applications: {max_apps - count}/{max_apps}]")
     try:
-        ensure_logged_in(driver)
+
         for city in cfg["locations"]:
             if count >= max_apps:
                 break
