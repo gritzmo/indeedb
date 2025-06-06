@@ -5,6 +5,7 @@ import re
 import time
 from datetime import datetime
 
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -19,8 +20,7 @@ except ImportError:  # pragma: no cover - optional dependency
 CONFIG_PATH = "config.json"
 APPLIED_JOBS_PATH = "applied_jobs.txt"
 WAIT_TIME = 20
-LOGIN_WAIT = 120
-COOKIES_PATH = "cookies.json"
+
 
 
 def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
@@ -31,6 +31,7 @@ def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
 def prompt_for_config() -> dict:
     print("[Config setup]")
     cfg = {
+
         "resume_path": input("Path to resume PDF: ").strip(),
         "search_keywords": input("Search keywords: ").strip() or "Software Engineer",
         "min_salary": float(input("Minimum hourly wage (e.g. 17): ").strip() or "17"),
@@ -123,6 +124,7 @@ def manual_google_login(driver: webdriver.Chrome) -> None:
     )
     print("[Login successful - continuing bot]")
     save_cookies(driver)
+
 
 
 
@@ -335,7 +337,9 @@ def main() -> None:
     max_apps = cfg.get("max_applications", 50)
     count = 0
     try:
+
         manual_google_login(driver)
+
         for city in cfg["locations"]:
             if count >= max_apps:
                 break
