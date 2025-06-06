@@ -6,7 +6,11 @@ import time
 from datetime import datetime
 
 
-from selenium import webdriver
+import logging
+import undetected_chromedriver as uc
+
+
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -20,6 +24,9 @@ except ImportError:  # pragma: no cover - optional dependency
 CONFIG_PATH = "config.json"
 APPLIED_JOBS_PATH = "applied_jobs.txt"
 WAIT_TIME = 20
+
+LOGIN_WAIT = 120
+COOKIES_PATH = "cookies.json"
 
 
 
@@ -57,7 +64,17 @@ def load_config(path: str = CONFIG_PATH) -> dict:
     return cfg
 
 
-def setup_driver() -> webdriver.Chrome:
+
+def setup_driver() -> uc.Chrome:
+    """Return a maximized undetected Chrome WebDriver."""
+    options = uc.ChromeOptions()
+    options.add_argument("--start-maximized")
+    driver = uc.Chrome(options=options)
+    logging.getLogger("undetected_chromedriver").setLevel(logging.WARNING)
+    return driver
+
+
+def save_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> None::
     """Return a maximized Chrome WebDriver."""
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
@@ -65,6 +82,7 @@ def setup_driver() -> webdriver.Chrome:
 
 
 def save_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> None:
+
     """Persist browser cookies to a JSON file."""
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -73,7 +91,7 @@ def save_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> None:
         pass
 
 
-def load_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> bool:
+def load_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> bool:
     """Load cookies if available. Returns True when login is restored."""
     if not os.path.exists(path):
         return False
@@ -93,7 +111,8 @@ def load_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> bool:
         return False
 
 
-def manual_google_login(driver: webdriver.Chrome) -> None:
+
+def manual_google_login(driver: uc.Chrome) -> None:
     """Prompt user to sign in with Google manually."""
     if load_cookies(driver):
         return
@@ -128,8 +147,8 @@ def manual_google_login(driver: webdriver.Chrome) -> None:
 
 
 
+def search_jobs_for_city(driver: uc.Chrome, keywords: str, city: str) -> None:
 
-def search_jobs_for_city(driver: webdriver.Chrome, keywords: str, city: str) -> None:
     """Search Indeed for keywords in a specific city."""
     print(f"[Searching for '{keywords}' in {city}]")
     driver.get("https://www.indeed.com")
@@ -193,7 +212,7 @@ def meets_salary_requirement(text: str, minimum: float) -> bool:
     return salary is not None and salary >= minimum
 
 
-def extract_salary(driver: webdriver.Chrome) -> str | None:
+def extract_salary(driver: uc.Chrome) -> str | None:
     try:
         el = driver.find_element(By.CSS_SELECTOR, ".salary-snippet")
         return el.text
@@ -201,7 +220,8 @@ def extract_salary(driver: webdriver.Chrome) -> str | None:
         return None
 
 
-def extract_job_type(driver: webdriver.Chrome) -> str | None:
+
+def extract_job_type(driver: uc.Chrome) -> str | None:
     """Return the job type text if available."""
     try:
         key = driver.find_element(
@@ -218,7 +238,78 @@ def extract_job_type(driver: webdriver.Chrome) -> str | None:
         return None
 
 
-def get_easy_apply_jobs(driver: webdriver.Chrome, seen: set[str], cfg: dict) -> list[dict]:
+def fill_additional_fields(driver: uc.Chrome) -> None:
+    """Handle common form fields during applications."""
+    # Text inputs and textareas
+    fields = driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='tel'], textarea, input:not([type])")
+    for field in fields:
+        try:
+            if not field.is_displayed() or not field.is_enabled() or field.get_attribute("value"):
+                continue
+            placeholder = field.get_attribute("aria-label") or field.get_attribute("placeholder") or field.get_attribute("name") or "input"
+            print(f"[Filling input: {placeholder}]")
+            field.clear()
+            if field.get_attribute("type") == "tel":
+                field.send_keys("555-555-5555")
+            else:
+                field.send_keys("N/A")
+        except Exception:
+            print("[Unknown form element skipped]")
+
+    # Dropdowns
+    selects = driver.find_elements(By.TAG_NAME, "select")
+    for select in selects:
+        try:
+            if not select.is_displayed() or not select.is_enabled():
+                continue
+            label = select.get_attribute("aria-label") or select.get_attribute("name") or "dropdown"
+            print(f"[Selecting from dropdown: {label}]")
+            options = select.find_elements(By.TAG_NAME, "option")
+            for option in options:
+                if option.get_attribute("value") and not option.get_attribute("disabled"):
+                    option.click()
+                    break
+        except Exception:
+            print("[Unknown form element skipped]")
+
+    # Radio buttons
+    radios = driver.find_elements(By.CSS_SELECTOR, "input[type='radio']")
+    grouped: dict[str, list] = {}
+    for radio in radios:
+        if not radio.is_displayed() or not radio.is_enabled():
+            continue
+        grouped.setdefault(radio.get_attribute("name"), []).append(radio)
+    for name, group in grouped.items():
+        try:
+            label = name or "radio"
+            choice = None
+            for r in group:
+                lab = (r.get_attribute("aria-label") or "").lower()
+                if "yes" in lab:
+                    choice = r
+                    break
+            if not choice:
+                choice = group[0]
+            print(f"[Selecting radio option: {label}]")
+            choice.click()
+        except Exception:
+            print("[Unknown form element skipped]")
+
+    # Required checkboxes
+    checkboxes = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+    for box in checkboxes:
+        try:
+            if not box.is_displayed() or not box.is_enabled() or box.is_selected():
+                continue
+            if box.get_attribute("required") or box.get_attribute("aria-required"):
+                label = box.get_attribute("aria-label") or box.get_attribute("name") or "checkbox"
+                print(f"[Checking checkbox: {label}]")
+                box.click()
+        except Exception:
+            print("[Unknown form element skipped]")
+
+
+def get_easy_apply_jobs(driver: uc.Chrome, seen: set[str], cfg: dict) -> list[dict]:
     jobs: list[dict] = []
     elements = driver.find_elements(
         By.XPATH, "//span[contains(text(),'Easily apply')]/ancestor::a[@data-jk]"
@@ -251,7 +342,7 @@ def get_easy_apply_jobs(driver: webdriver.Chrome, seen: set[str], cfg: dict) -> 
 
 
 def apply_to_job(
-    driver: webdriver.Chrome, job: dict, city: str, cfg: dict
+    driver: uc.Chrome, job: dict, city: str, cfg: dict
 ) -> str:
     """Attempt to apply to a job and return status string."""
     link = job["link"]
@@ -292,6 +383,9 @@ def apply_to_job(
             file_input.send_keys(cfg["resume_path"])
         except Exception:
             pass
+
+        fill_additional_fields(driver)
+        
         try:
             submit_btn = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Submit')]")
@@ -339,6 +433,7 @@ def main() -> None:
     try:
 
         manual_google_login(driver)
+
 
         for city in cfg["locations"]:
             if count >= max_apps:
