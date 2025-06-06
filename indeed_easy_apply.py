@@ -6,68 +6,21 @@ import time
 from datetime import datetime
 
 
-import logging
-import undetected_chromedriver as uc
+LOGIN_CHECK_WAIT = 120
+# Path to your Chrome user data directory and profile
+USER_DATA_DIR = "C:/Users/YourName/AppData/Local/Google/Chrome/User Data"
+PROFILE_DIR = "Default"
 
 
 
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-try:
-    from win10toast import ToastNotifier
-except ImportError:  # pragma: no cover - optional dependency
-    ToastNotifier = None
-
-CONFIG_PATH = "config.json"
-APPLIED_JOBS_PATH = "applied_jobs.txt"
-WAIT_TIME = 20
-
-LOGIN_WAIT = 120
-COOKIES_PATH = "cookies.json"
-
-
-
-def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
-
-
-def prompt_for_config() -> dict:
-    print("[Config setup]")
-    cfg = {
-
-        "resume_path": input("Path to resume PDF: ").strip(),
-        "search_keywords": input("Search keywords: ").strip() or "Software Engineer",
-        "min_salary": float(input("Minimum hourly wage (e.g. 17): ").strip() or "17"),
-        "locations": [loc.strip() for loc in input("Locations (comma separated): ").split(",") if loc.strip()],
-        "max_applications": int(input("Maximum applications: ").strip() or "50"),
-        "log_path": input("Log CSV path: ").strip() or "applied_jobs_log.csv",
-    }
-    return cfg
-
-
-def load_config(path: str = CONFIG_PATH) -> dict:
-    """Load configuration or interactively prompt on first run."""
-    if not os.path.exists(path):
-        cfg = prompt_for_config()
-        save_config(cfg, path)
-        return cfg
-    with open(path, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
-    choice = input("Use existing configuration? (Y/n): ").strip().lower()
-    if choice == "n":
-        cfg = prompt_for_config()
-        save_config(cfg, path)
-    return cfg
-
-
-
-def setup_driver() -> uc.Chrome:
-    """Return a maximized undetected Chrome WebDriver."""
-    options = uc.ChromeOptions()
+    """Return a Chrome WebDriver using the existing user profile."""
+    options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
+    options.add_argument(f"--profile-directory={PROFILE_DIR}")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+def ensure_logged_in(driver: uc.Chrome) -> None:
+    """Open Indeed using the existing Chrome session and wait for login."""
+    print("[Using existing Chrome session. Please ensure you're logged in.]")
+    WebDriverWait(driver, LOGIN_CHECK_WAIT).until(
     options.add_argument("--start-maximized")
     driver = uc.Chrome(options=options)
     logging.getLogger("undetected_chromedriver").setLevel(logging.WARNING)
@@ -387,7 +340,7 @@ def apply_to_job(
         fill_additional_fields(driver)
         
         try:
-            submit_btn = wait.until(
+        ensure_logged_in(driver)
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Submit')]")
             ))
             submit_btn.click()

@@ -2,12 +2,15 @@
 
 This repository contains a Selenium script that automatically applies to
 
-"Easily apply" jobs on Indeed. Configuration values such as search keywords,
-allowed locations, and email notifications are stored in `config.json`.
+3. The script launches Chrome using your existing profile (edit the `USER_DATA_DIR`
+   and `PROFILE_DIR` constants in `indeed_easy_apply.py` if needed). Ensure
+   you're already logged in to Indeed in that profile. When the browser opens the
+   bot prints `[Using existing Chrome session. Please ensure you're logged in.]`
+   and waits until the search field appears before continuing.
 
-
-
-## Usage
+The script uses your existing Chrome profile for authentication. If Chrome is
+installed in a different location or you use another profile, update the
+`USER_DATA_DIR` and `PROFILE_DIR` constants at the top of `indeed_easy_apply.py`.
 1. Install dependencies:
    ```bash
 
