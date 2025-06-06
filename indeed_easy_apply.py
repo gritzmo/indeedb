@@ -15,10 +15,68 @@ CONFIG_PATH = 'config.json'
 APPLIED_JOBS_PATH = 'applied_jobs.txt'
 
 
+def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
+    """Save configuration to a JSON file."""
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, indent=2)
+
+
+def _prompt(current: dict, key: str, message: str, default: str | None = None) -> str:
+    default_val = current.get(key, default)
+    prompt_msg = f"{message}"
+    if default_val not in [None, '']:
+        prompt_msg += f" [{default_val}]"
+    prompt_msg += ": "
+    response = input(prompt_msg).strip()
+    return response if response else str(default_val or '')
+
+
+def prompt_for_config(existing: dict | None = None) -> dict:
+    """Interactively ask the user for configuration values."""
+    if existing is None:
+        existing = {}
+    cfg: dict = {}
+
+    cfg['indeed_email'] = _prompt(existing, 'indeed_email', 'Indeed email')
+    cfg['indeed_password'] = _prompt(existing, 'indeed_password', 'Indeed password')
+    cfg['resume_path'] = _prompt(existing, 'resume_path', 'Path to resume file')
+    cfg['name'] = _prompt(existing, 'name', 'Full name')
+    cfg['phone'] = _prompt(existing, 'phone', 'Phone number')
+
+    search_existing = existing.get('search', {})
+    search: dict = {}
+    search['keywords'] = _prompt(search_existing, 'keywords', 'Job keywords')
+    search['location'] = _prompt(search_existing, 'location', 'Job location')
+    search['radius'] = _prompt(search_existing, 'radius', 'Radius miles', '25')
+    ft = _prompt(search_existing, 'full_time', 'Full time only? (y/n)', 'y')
+    search['full_time'] = ft.lower().startswith('y')
+    rm = _prompt(search_existing, 'remote', 'Remote only? (y/n)', 'n')
+    search['remote'] = rm.lower().startswith('y')
+    cfg['search'] = search
+
+    cfg['max_applications'] = int(_prompt(existing, 'max_applications',
+                                          'Max applications per run', '50'))
+    cfg['log_path'] = _prompt(existing, 'log_path', 'Log file path',
+                              'applied_jobs_log.csv')
+
+    return cfg
+
+
 def load_config(path: str = CONFIG_PATH) -> dict:
-    """Load configuration from a JSON file."""
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    """Load configuration, prompting the user if necessary."""
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        print(f"Loaded configuration from {path}.")
+        change = input("Do you want to edit these settings? (y/N): ").strip().lower()
+        if change == 'y':
+            cfg = prompt_for_config(cfg)
+            save_config(cfg, path)
+    else:
+        print(f"Configuration file '{path}' not found. Let's create one.")
+        cfg = prompt_for_config()
+        save_config(cfg, path)
+    return cfg
 
 
 def setup_driver() -> webdriver.Chrome:
