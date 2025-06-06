@@ -13,7 +13,10 @@ search keywords, allowed locations, and email notifications are stored in
 2. Run the script for the first time to create `config.json`. The program will
    prompt you for your settings and save them for future runs. You can choose to
    update them each time the script starts.
-3. Run the script:
+3. When the browser opens, click **Continue with Google** and complete the login
+   manually. The bot waits up to two minutes for you to finish and then
+   continues automatically. Cookies are saved so future runs can skip this step.
+4. Run the script:
    ```bash
    python indeed_easy_apply.py
    ```

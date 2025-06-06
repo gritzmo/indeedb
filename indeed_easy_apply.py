@@ -20,7 +20,8 @@ except ImportError:  # pragma: no cover - optional dependency
 CONFIG_PATH = "config.json"
 APPLIED_JOBS_PATH = "applied_jobs.txt"
 WAIT_TIME = 20
-LOGIN_RETRIES = 3
+LOGIN_WAIT = 120
+COOKIES_PATH = "cookies.json"
 
 
 def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
@@ -65,36 +66,68 @@ def setup_driver() -> webdriver.Chrome:
     return webdriver.Chrome(options=options)
 
 
-def login(driver: webdriver.Chrome, email: str, password: str) -> None:
-    """Perform a single login attempt."""
-    driver.get("https://secure.indeed.com/account/login")
+def save_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> None:
+    """Persist browser cookies to a JSON file."""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(driver.get_cookies(), f)
+    except Exception:
+        pass
+
+
+def load_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> bool:
+    """Load cookies if available. Returns True when login is restored."""
+    if not os.path.exists(path):
+        return False
+    try:
+        driver.get("https://www.indeed.com")
+        with open(path, "r", encoding="utf-8") as f:
+            cookies = json.load(f)
+        for cookie in cookies:
+            driver.add_cookie(cookie)
+        driver.refresh()
+        WebDriverWait(driver, WAIT_TIME).until(
+            EC.presence_of_element_located((By.ID, "text-input-what"))
+        )
+        print("[Login successful - continuing bot]")
+        return True
+    except Exception:
+        return False
+
+
+def manual_google_login(driver: webdriver.Chrome) -> None:
+    """Prompt user to sign in with Google manually."""
+    if load_cookies(driver):
+        return
+
+    driver.get("https://www.indeed.com")
     wait = WebDriverWait(driver, WAIT_TIME)
-    email_field = wait.until(EC.element_to_be_clickable((By.ID, "login-email-input")))
-    email_field.clear()
-    email_field.send_keys(email)
-    pw_field = driver.find_element(By.ID, "login-password-input")
-    pw_field.clear()
-    pw_field.send_keys(password)
-    driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
-    # success when the global nav header loads
-    wait.until(EC.presence_of_element_located((By.ID, "gnav-header-inner")))
+    try:
+        sign_in = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Sign in")))
+        sign_in.click()
+    except Exception:
+        pass
+    try:
+        google_btn = WebDriverWait(driver, WAIT_TIME).until(
+            EC.element_to_be_clickable(
+                (
+                    By.XPATH,
+                    "//span[contains(text(),'Continue with Google')]/parent::button",
+                )
+            )
+        )
+        google_btn.click()
+    except Exception:
+        pass
+
+    print("[Waiting for manual Google login...]")
+    WebDriverWait(driver, LOGIN_WAIT).until(
+        EC.presence_of_element_located((By.ID, "text-input-what"))
+    )
+    print("[Login successful - continuing bot]")
+    save_cookies(driver)
 
 
-def login_with_retry(driver: webdriver.Chrome, email: str, password: str, retries: int = LOGIN_RETRIES) -> None:
-    """Attempt to log in multiple times before failing."""
-    last_error: Exception | None = None
-    for attempt in range(1, retries + 1):
-        print("[Attempting login...]")
-        try:
-            login(driver, email, password)
-            print("[Login successful]")
-            return
-        except Exception as exc:  # noqa: PERF203
-            last_error = exc
-            print(f"[Login failed - retry {attempt}/{retries}]")
-            time.sleep(2)
-    print("[Login failed after 3 attempts. Exiting.]")
-    raise RuntimeError("Unable to log in after multiple attempts") from last_error
 
 
 def search_jobs_for_city(driver: webdriver.Chrome, keywords: str, city: str) -> None:
@@ -305,7 +338,7 @@ def main() -> None:
     max_apps = cfg.get("max_applications", 50)
     count = 0
     try:
-        login_with_retry(driver, cfg["indeed_email"], cfg["indeed_password"])
+        manual_google_login(driver)
         for city in cfg["locations"]:
             if count >= max_apps:
                 break
