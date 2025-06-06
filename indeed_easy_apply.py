@@ -5,27 +5,24 @@ import re
 import time
 from datetime import datetime
 
-
-import logging
-import undetected_chromedriver as uc
-from geopy.distance import geodesic
-from geopy.geocoders import Nominatim
-
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-try:
-    from win10toast import ToastNotifier
-except ImportError:  # pragma: no cover - optional dependency
-    ToastNotifier = None
-
-CONFIG_PATH = "config.json"
-APPLIED_JOBS_PATH = "applied_jobs.txt"
-WAIT_TIME = 20
-LOGIN_CHECK_WAIT = 120
-# Path to your Chrome user data directory and profile
+from selenium import webdriver
+from selenium.common.exceptions import SessionNotCreatedException
+# Path to the bot's dedicated Chrome user data directory
+USER_DATA_DIR = "C:/Users/Jesse/AppData/Local/Google/Chrome/BotProfile"
+def setup_driver() -> webdriver.Chrome:
+    """Create a Chrome WebDriver using a dedicated user profile."""
+    options = webdriver.ChromeOptions()
+    # Avoid reusing the default profile to prevent conflicts
+    try:
+        driver = webdriver.Chrome(options=options)
+    except SessionNotCreatedException:
+        print(
+            "[Chrome session couldn’t be created—check ChromeDriver/Chrome versions or profile path]"
+        )
+        raise
+    print("[Launched Chrome and navigating to Indeed.com...]")
+    return driver
+def search_jobs_for_city(driver: webdriver.Chrome, city: str) -> None:
 USER_DATA_DIR = "C:/Users/Jesse/AppData/Local/Google/Chrome/User Data"
 PROFILE_DIR = "Profile 1"
 
@@ -153,12 +150,12 @@ def parse_salary(text: str) -> float | None:
 def is_valid_job_type(page_text: str) -> bool:
     text = page_text.lower()
     if any(word in text for word in ["contract", "temporary", "internship"]):
-        return False
-    return "full-time" in text or "part-time" in text
+def extract_salary(driver: webdriver.Chrome) -> str | None:
+def extract_job_type(driver: webdriver.Chrome) -> str | None:
 
 
-def meets_salary_requirement(text: str, minimum: float) -> bool:
-    salary = parse_salary(text)
+def extract_location(driver: webdriver.Chrome) -> str | None:
+def fill_additional_fields(driver: webdriver.Chrome) -> None:
     return salary is not None and salary >= minimum
 
 
@@ -266,8 +263,8 @@ def fill_additional_fields(driver: uc.Chrome) -> None:
     grouped: dict[str, list] = {}
     for radio in radios:
         if not radio.is_displayed() or not radio.is_enabled():
-            continue
-        grouped.setdefault(radio.get_attribute("name"), []).append(radio)
+def get_easy_apply_jobs(driver: webdriver.Chrome, seen: set[str], cfg: dict) -> list[dict]:
+    driver: webdriver.Chrome, job: dict, city: str, cfg: dict
     for name, group in grouped.items():
         try:
             label = name or "radio"
@@ -391,7 +388,11 @@ def apply_to_job(
             submit_btn.click()
             wait.until(
                 EC.presence_of_element_located(
-                    (
+    print("[Using Chrome profile. Please confirm you're logged in.]")
+    WebDriverWait(driver, LOGIN_CHECK_WAIT).until(
+        EC.presence_of_element_located((By.ID, "text-input-what"))
+    )
+    print("[Indeed.com loaded—continuing bot]")
                         By.XPATH,
                         "//*[contains(text(),'application has been submitted') or contains(text(),'applied') or contains(text(),'Thank you')]",
                     )
