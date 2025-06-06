@@ -8,8 +8,8 @@ from datetime import datetime
 
 import logging
 import undetected_chromedriver as uc
-
-
+from geopy.distance import geodesic
+from geopy.geocoders import Nominatim
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -24,10 +24,12 @@ except ImportError:  # pragma: no cover - optional dependency
 CONFIG_PATH = "config.json"
 APPLIED_JOBS_PATH = "applied_jobs.txt"
 WAIT_TIME = 20
+LOGIN_CHECK_WAIT = 120
+# Path to your Chrome user data directory and profile
+USER_DATA_DIR = "C:/Users/Jesse/AppData/Local/Google/Chrome/User Data"
+PROFILE_DIR = "Profile 1"
 
-LOGIN_WAIT = 120
-COOKIES_PATH = "cookies.json"
-
+GEOLOCATOR = Nominatim(user_agent="indeed-bot")
 
 
 def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
@@ -38,11 +40,11 @@ def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
 def prompt_for_config() -> dict:
     print("[Config setup]")
     cfg = {
-
         "resume_path": input("Path to resume PDF: ").strip(),
-        "search_keywords": input("Search keywords: ").strip() or "Software Engineer",
         "min_salary": float(input("Minimum hourly wage (e.g. 17): ").strip() or "17"),
         "locations": [loc.strip() for loc in input("Locations (comma separated): ").split(",") if loc.strip()],
+        "user_address": input("Your home address: ").strip(),
+
         "max_applications": int(input("Maximum applications: ").strip() or "50"),
         "log_path": input("Log CSV path: ").strip() or "applied_jobs_log.csv",
     }
@@ -64,99 +66,40 @@ def load_config(path: str = CONFIG_PATH) -> dict:
     return cfg
 
 
-
 def setup_driver() -> uc.Chrome:
-    """Return a maximized undetected Chrome WebDriver."""
+    """Return a Chrome WebDriver using the existing user profile."""
     options = uc.ChromeOptions()
+    options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
+    options.add_argument(f"--profile-directory={PROFILE_DIR}")
     options.add_argument("--start-maximized")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+
     driver = uc.Chrome(options=options)
     logging.getLogger("undetected_chromedriver").setLevel(logging.WARNING)
     return driver
 
 
-def save_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> None::
-    """Return a maximized Chrome WebDriver."""
-    options = webdriver.ChromeOptions()
-    options.add_argument("--start-maximized")
-    return webdriver.Chrome(options=options)
-
-
-def save_cookies(driver: webdriver.Chrome, path: str = COOKIES_PATH) -> None:
-
-    """Persist browser cookies to a JSON file."""
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(driver.get_cookies(), f)
-    except Exception:
-        pass
-
-
-def load_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> bool:
-    """Load cookies if available. Returns True when login is restored."""
-    if not os.path.exists(path):
-        return False
-    try:
-        driver.get("https://www.indeed.com")
-        with open(path, "r", encoding="utf-8") as f:
-            cookies = json.load(f)
-        for cookie in cookies:
-            driver.add_cookie(cookie)
-        driver.refresh()
-        WebDriverWait(driver, WAIT_TIME).until(
-            EC.presence_of_element_located((By.ID, "text-input-what"))
-        )
-        print("[Login successful - continuing bot]")
-        return True
-    except Exception:
-        return False
-
-
-
-def manual_google_login(driver: uc.Chrome) -> None:
-    """Prompt user to sign in with Google manually."""
-    if load_cookies(driver):
-        return
-
+def ensure_logged_in(driver: uc.Chrome) -> None:
+    """Open Indeed using the existing Chrome session and wait for login."""
     driver.get("https://www.indeed.com")
-    wait = WebDriverWait(driver, WAIT_TIME)
-    try:
-        sign_in = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Sign in")))
-        sign_in.click()
-    except Exception:
-        pass
-    try:
-        google_btn = WebDriverWait(driver, WAIT_TIME).until(
-            EC.element_to_be_clickable(
-                (
-                    By.XPATH,
-                    "//span[contains(text(),'Continue with Google')]/parent::button",
-                )
-            )
-        )
-        google_btn.click()
-    except Exception:
-        pass
-
-    print("[Please log in manually with your Google account and solve the CAPTCHA]")
-    WebDriverWait(driver, LOGIN_WAIT).until(
+    print("[Using Chrome profile. Please confirm you're logged in.]")
+    WebDriverWait(driver, LOGIN_CHECK_WAIT).until(
         EC.presence_of_element_located((By.ID, "text-input-what"))
     )
     print("[Login successful - continuing bot]")
-    save_cookies(driver)
 
 
 
 
-def search_jobs_for_city(driver: uc.Chrome, keywords: str, city: str) -> None:
-
-    """Search Indeed for keywords in a specific city."""
-    print(f"[Searching for '{keywords}' in {city}]")
+def search_jobs_for_city(driver: uc.Chrome, city: str) -> None:
+    """Search Indeed for any jobs in a specific city."""
+    print(f"[Searching in {city}]")
     driver.get("https://www.indeed.com")
     wait = WebDriverWait(driver, WAIT_TIME)
     what = wait.until(EC.element_to_be_clickable((By.ID, "text-input-what")))
     where = driver.find_element(By.ID, "text-input-where")
     what.clear()
-    what.send_keys(keywords)
+
     where.clear()
     where.send_keys(city)
     where.send_keys(Keys.RETURN)
@@ -180,7 +123,14 @@ def save_log(path: str, data: dict) -> None:
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["timestamp", "job_title", "company", "city", "status"],
+            fieldnames=[
+                "timestamp",
+                "job_title",
+                "company",
+                "city",
+                "distance",
+                "status",
+            ],
         )
         if not file_exists:
             writer.writeheader()
@@ -212,6 +162,27 @@ def meets_salary_requirement(text: str, minimum: float) -> bool:
     return salary is not None and salary >= minimum
 
 
+def geocode(address: str):
+    """Return (lat, lon) for an address if possible."""
+    try:
+        loc = GEOLOCATOR.geocode(address)
+        if loc:
+            return (loc.latitude, loc.longitude)
+    except Exception as exc:  # pragma: no cover - network issues
+        print(f"[Geocoding error: {exc}]")
+    return None
+
+
+def calculate_distance(addr1: str, addr2: str) -> float | None:
+    """Return distance in miles between two addresses."""
+    loc1 = geocode(addr1)
+    loc2 = geocode(addr2)
+    if not loc1 or not loc2:
+        return None
+    return round(geodesic(loc1, loc2).miles, 1)
+
+
+
 def extract_salary(driver: uc.Chrome) -> str | None:
     try:
         el = driver.find_element(By.CSS_SELECTOR, ".salary-snippet")
@@ -236,6 +207,24 @@ def extract_job_type(driver: uc.Chrome) -> str | None:
             if word in page:
                 return word
         return None
+
+
+def extract_location(driver: uc.Chrome) -> str | None:
+    """Return job location text if possible."""
+    selectors = [
+        ".jobsearch-JobInfoHeader-subtitle div",
+        ".jobsearch-DesktopStickyContainer-subtitle div",
+        ".companyLocation",
+    ]
+    for sel in selectors:
+        try:
+            loc = driver.find_element(By.CSS_SELECTOR, sel).text
+            if loc:
+                return loc
+        except Exception:
+            continue
+    return None
+
 
 
 def fill_additional_fields(driver: uc.Chrome) -> None:
@@ -316,7 +305,10 @@ def get_easy_apply_jobs(driver: uc.Chrome, seen: set[str], cfg: dict) -> list[di
     )
     for el in elements:
         jid = el.get_attribute("data-jk")
-        if not jid or jid in seen:
+        if not jid:
+            continue
+        if jid in seen:
+            print(f"[Skipping previously applied job: {jid}]")
             continue
         try:
             company = el.find_element(By.CSS_SELECTOR, ".companyName").text
@@ -343,31 +335,36 @@ def get_easy_apply_jobs(driver: uc.Chrome, seen: set[str], cfg: dict) -> list[di
 
 def apply_to_job(
     driver: uc.Chrome, job: dict, city: str, cfg: dict
-) -> str:
-    """Attempt to apply to a job and return status string."""
+) -> tuple[str, float | None]:
+    """Attempt to apply to a job and return (status, distance)."""
     link = job["link"]
     print(f"[Evaluating: {job['title']} at {job['company']}]")
     driver.execute_script("window.open(arguments[0], '_blank');", link)
     driver.switch_to.window(driver.window_handles[-1])
     wait = WebDriverWait(driver, WAIT_TIME)
     status = "Skipped"
+    distance = None
+
     try:
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         job_type = extract_job_type(driver)
         if job_type is None or job_type.lower() not in {"full-time", "part-time"}:
             skip_type = job_type if job_type else "Unknown"
             print(f"[Skipping job - type is {skip_type}]")
-            status = "Skipped"
-            return status
+            return status, distance
         salary_text = extract_salary(driver)
         if not salary_text:
             print("[Skipping job - salary not listed]")
-            status = "Skipped"
-            return status
+            return status, distance
         if not meets_salary_requirement(salary_text, cfg["min_salary"]):
             print("[Skipping job - salary too low]")
-            status = "Skipped"
-            return status
+            return status, distance
+        job_location = extract_location(driver) or job["location"]
+        if job_location:
+            distance = calculate_distance(cfg.get("user_address", ""), job_location)
+            if distance is not None:
+                print(f"[Distance to job: {distance} miles]")
+
         print("[Criteria met - applying now]")
         apply_button = wait.until(
             EC.element_to_be_clickable(
@@ -384,8 +381,9 @@ def apply_to_job(
         except Exception:
             pass
 
+        # Handle common form elements before final submission
         fill_additional_fields(driver)
-        
+
         try:
             submit_btn = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Submit')]")
@@ -404,14 +402,16 @@ def apply_to_job(
             status = "Error"
             print(f"Error submitting application: {exc}")
         if status == "Applied":
+            dist_msg = f" ({distance} miles)" if distance is not None else ""
             if ToastNotifier:
                 ToastNotifier().show_toast(
                     "Indeed Bot: Application Sent",
-                    f"{job['title']} at {job['company']} in {city}",
+                    f"{job['title']} at {job['company']} - {distance} mi away" if distance is not None else f"{job['title']} at {job['company']}",
                     duration=5,
                     threaded=True,
                 )
-            print(f"[Application sent: {job['title']} at {job['company']} in {city}]")
+            print(f"[Application sent: {job['title']} at {job['company']}{dist_msg}]")
+
             print("[Application complete]")
     except Exception as exc:
         status = "Error"
@@ -419,7 +419,8 @@ def apply_to_job(
     finally:
         driver.close()
         driver.switch_to.window(driver.window_handles[0])
-    return status
+    return status, distance
+
 
 
 def main() -> None:
@@ -430,15 +431,14 @@ def main() -> None:
     log_path = cfg.get("log_path", "applied_jobs_log.csv")
     max_apps = cfg.get("max_applications", 50)
     count = 0
+    print(f"[Remaining applications: {max_apps - count}/{max_apps}]")
     try:
-
-        manual_google_login(driver)
-
-
+        ensure_logged_in(driver)
         for city in cfg["locations"]:
             if count >= max_apps:
                 break
-            search_jobs_for_city(driver, cfg["search_keywords"], city)
+            search_jobs_for_city(driver, city)
+
             while count < max_apps:
                 jobs = get_easy_apply_jobs(driver, applied_jobs, cfg)
                 if not jobs:
@@ -446,11 +446,14 @@ def main() -> None:
                 for job in jobs:
                     if count >= max_apps:
                         break
-                    status = apply_to_job(driver, job, city, cfg)
+                    status, dist = apply_to_job(driver, job, city, cfg)
+
                     if status == "Applied":
                         applied_jobs.add(job["id"])
                         save_applied_job(job["id"])
                         count += 1
+                    print(f"[Remaining applications: {max_apps - count}/{max_apps}]")
+
                     save_log(
                         log_path,
                         {
@@ -458,6 +461,8 @@ def main() -> None:
                             "job_title": job["title"],
                             "company": job["company"],
                             "city": city,
+                            "distance": dist,
+
                             "status": status,
                         },
                     )
