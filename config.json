@@ -1,0 +1,16 @@
+{
+  "indeed_email": "user@example.com",
+  "indeed_password": "YourSecurePassword123",
+  "resume_path": "/path/to/resume.pdf",
+  "name": "Your Name",
+  "phone": "555-555-5555",
+  "search": {
+    "keywords": "Software Engineer",
+    "location": "New York, NY",
+    "radius": "25",
+    "full_time": true,
+    "remote": false
+  },
+  "max_applications": 50,
+  "log_path": "applied_jobs_log.csv"
+}
