@@ -8,6 +8,7 @@ allowed locations, and logging are stored in `config.json`.
 1. Install dependencies:
    ```bash
    pip install selenium win10toast geopy
+
    ```
 2. Run the script for the first time to create `config.json`. The program will
    prompt you for your settings and save them for future runs. You can choose to
@@ -17,6 +18,7 @@ allowed locations, and logging are stored in `config.json`.
    checks for a "Sign in" link. If it's present, you'll see a prompt to log in
    manually, and the bot waits until the link disappears before continuing.
 4. Run the script:
+
    ```bash
    python indeed_easy_apply.py
    ```
@@ -34,6 +36,7 @@ Example `config.json`:
   "min_salary": 17,
   "locations": ["Pawtucket, RI", "Providence, RI", "Cranston, RI", "Lincoln, RI"],
   "user_address": "123 Main Street, Pawtucket, RI",
+
   "max_applications": 50,
   "log_path": "applied_jobs_log.csv"
 }
@@ -42,3 +45,4 @@ Example `config.json`:
 The script stores its own Chrome user data in the folder defined by
 `USER_DATA_DIR` at the top of `indeed_easy_apply.py`. If Chrome is installed in
 a different location, edit that constant accordingly.
+

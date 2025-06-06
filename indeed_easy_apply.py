@@ -10,6 +10,7 @@ from selenium import webdriver
 from selenium.common.exceptions import SessionNotCreatedException
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -27,6 +28,7 @@ LOGIN_CHECK_WAIT = 120
 # Path to the bot's dedicated Chrome user data directory
 USER_DATA_DIR = "C:/Users/Jesse/AppData/Local/Google/Chrome/BotProfile"
 
+
 GEOLOCATOR = Nominatim(user_agent="indeed-bot")
 
 
@@ -42,6 +44,7 @@ def prompt_for_config() -> dict:
         "min_salary": float(input("Minimum hourly wage (e.g. 17): ").strip() or "17"),
         "locations": [loc.strip() for loc in input("Locations (comma separated): ").split(",") if loc.strip()],
         "user_address": input("Your home address: ").strip(),
+
         "max_applications": int(input("Maximum applications: ").strip() or "50"),
         "log_path": input("Log CSV path: ").strip() or "applied_jobs_log.csv",
     }
@@ -176,6 +179,7 @@ def calculate_distance(addr1: str, addr2: str) -> float | None:
 
 
 def extract_salary(driver: webdriver.Chrome) -> str | None:
+
     try:
         el = driver.find_element(By.CSS_SELECTOR, ".salary-snippet")
         return el.text
@@ -184,6 +188,7 @@ def extract_salary(driver: webdriver.Chrome) -> str | None:
 
 
 def extract_job_type(driver: webdriver.Chrome) -> str | None:
+
     """Return the job type text if available."""
     try:
         key = driver.find_element(
@@ -201,6 +206,7 @@ def extract_job_type(driver: webdriver.Chrome) -> str | None:
 
 
 def extract_location(driver: webdriver.Chrome) -> str | None:
+
     """Return job location text if possible."""
     selectors = [
         ".jobsearch-JobInfoHeader-subtitle div",
@@ -218,6 +224,7 @@ def extract_location(driver: webdriver.Chrome) -> str | None:
 
 
 def fill_additional_fields(driver: webdriver.Chrome) -> None:
+
     """Handle common form fields during applications."""
     # Text inputs and textareas
     fields = driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='tel'], textarea, input:not([type])")
@@ -289,6 +296,7 @@ def fill_additional_fields(driver: webdriver.Chrome) -> None:
 
 
 def get_easy_apply_jobs(driver: webdriver.Chrome, seen: set[str], cfg: dict) -> list[dict]:
+
     jobs: list[dict] = []
     elements = driver.find_elements(
         By.XPATH, "//span[contains(text(),'Easily apply')]/ancestor::a[@data-jk]"
@@ -325,6 +333,7 @@ def get_easy_apply_jobs(driver: webdriver.Chrome, seen: set[str], cfg: dict) -> 
 
 def apply_to_job(
     driver: webdriver.Chrome, job: dict, city: str, cfg: dict
+
 ) -> tuple[str, float | None]:
     """Attempt to apply to a job and return (status, distance)."""
     link = job["link"]
@@ -334,6 +343,7 @@ def apply_to_job(
     wait = WebDriverWait(driver, WAIT_TIME)
     status = "Skipped"
     distance = None
+
     try:
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         job_type = extract_job_type(driver)
@@ -353,6 +363,7 @@ def apply_to_job(
             distance = calculate_distance(cfg.get("user_address", ""), job_location)
             if distance is not None:
                 print(f"[Distance to job: {distance} miles]")
+
         print("[Criteria met - applying now]")
         apply_button = wait.until(
             EC.element_to_be_clickable(
@@ -371,6 +382,7 @@ def apply_to_job(
 
         # Handle common form elements before final submission
         fill_additional_fields(driver)
+
         try:
             submit_btn = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Submit')]")
@@ -398,6 +410,7 @@ def apply_to_job(
                     threaded=True,
                 )
             print(f"[Application sent: {job['title']} at {job['company']}{dist_msg}]")
+
             print("[Application complete]")
     except Exception as exc:
         status = "Error"
@@ -428,15 +441,18 @@ def main() -> None:
     applied_jobs = load_applied_jobs()
     driver = setup_driver()
     ensure_logged_in(driver)
+
     log_path = cfg.get("log_path", "applied_jobs_log.csv")
     max_apps = cfg.get("max_applications", 50)
     count = 0
     print(f"[Remaining applications: {max_apps - count}/{max_apps}]")
     try:
+
         for city in cfg["locations"]:
             if count >= max_apps:
                 break
             search_jobs_for_city(driver, city)
+
             while count < max_apps:
                 jobs = get_easy_apply_jobs(driver, applied_jobs, cfg)
                 if not jobs:
@@ -445,11 +461,13 @@ def main() -> None:
                     if count >= max_apps:
                         break
                     status, dist = apply_to_job(driver, job, city, cfg)
+
                     if status == "Applied":
                         applied_jobs.add(job["id"])
                         save_applied_job(job["id"])
                         count += 1
                     print(f"[Remaining applications: {max_apps - count}/{max_apps}]")
+
                     save_log(
                         log_path,
                         {
@@ -458,6 +476,7 @@ def main() -> None:
                             "company": job["company"],
                             "city": city,
                             "distance": dist,
+
                             "status": status,
                         },
                     )
