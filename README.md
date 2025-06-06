@@ -2,7 +2,7 @@
 
 This repository contains a Selenium script that automatically applies to
 
-"Easily apply" jobs on Indeed. Configuration values such as login details,
+   pip install selenium undetected-chromedriver win10toast
 search keywords, allowed locations, and email notifications are stored in
 `config.json`.
 

@@ -5,16 +5,19 @@ import re
 import time
 from datetime import datetime
 
+import logging
+import undetected_chromedriver as uc
+def setup_driver() -> uc.Chrome:
+    """Return a maximized undetected Chrome WebDriver."""
+    options = uc.ChromeOptions()
+    driver = uc.Chrome(options=options)
+    logging.getLogger("undetected_chromedriver").setLevel(logging.WARNING)
+    return driver
+def save_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> None:
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-try:
-    from win10toast import ToastNotifier
-except ImportError:  # pragma: no cover - optional dependency
+def load_cookies(driver: uc.Chrome, path: str = COOKIES_PATH) -> bool:
+def manual_google_login(driver: uc.Chrome) -> None:
+def search_jobs_for_city(driver: uc.Chrome, keywords: str, city: str) -> None:
     ToastNotifier = None
 
 CONFIG_PATH = "config.json"
@@ -170,10 +173,10 @@ def save_log(path: str, data: dict) -> None:
 
 
 
-def parse_salary(text: str) -> float | None:
-    """Return the numeric lower bound of a salary string."""
-    numbers = re.findall(r"\$([\d,.]+)", text)
-    if not numbers:
+def extract_salary(driver: uc.Chrome) -> str | None:
+def extract_job_type(driver: uc.Chrome) -> str | None:
+def get_easy_apply_jobs(driver: uc.Chrome, seen: set[str], cfg: dict) -> list[dict]:
+    driver: uc.Chrome, job: dict, city: str, cfg: dict
         return None
     try:
         return float(numbers[0].replace(",", ""))
