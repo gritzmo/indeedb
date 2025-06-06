@@ -12,13 +12,82 @@ from selenium.webdriver.support import expected_conditions as EC
 
 
 CONFIG_PATH = 'config.json'
+
+DEFAULT_APPLIED_JOBS_PATH = 'applied_jobs.txt'
+
+
+def save_config(cfg: dict, path: str = CONFIG_PATH) -> None:
+    """Save configuration to a JSON file."""
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, indent=2)
+
+
+def _prompt(current: dict, key: str, message: str, default: str | None = None) -> str:
+    default_val = current.get(key, default)
+    prompt_msg = f"{message}"
+    if default_val not in [None, '']:
+        prompt_msg += f" [{default_val}]"
+    prompt_msg += ": "
+    response = input(prompt_msg).strip()
+    return response if response else str(default_val or '')
+
+
+def prompt_for_config(existing: dict | None = None) -> dict:
+    """Interactively ask the user for configuration values."""
+    if existing is None:
+        existing = {}
+    cfg: dict = {}
+
+    cfg['indeed_email'] = _prompt(existing, 'indeed_email', 'Indeed email')
+    cfg['indeed_password'] = _prompt(existing, 'indeed_password', 'Indeed password')
+    cfg['resume_path'] = _prompt(existing, 'resume_path', 'Path to resume file')
+    cfg['name'] = _prompt(existing, 'name', 'Full name')
+    cfg['phone'] = _prompt(existing, 'phone', 'Phone number')
+
+    search_existing = existing.get('search', {})
+    search: dict = {}
+    search['keywords'] = _prompt(search_existing, 'keywords', 'Job keywords')
+    search['location'] = _prompt(search_existing, 'location', 'Job location')
+    search['radius'] = _prompt(search_existing, 'radius', 'Radius miles', '25')
+    ft = _prompt(search_existing, 'full_time', 'Full time only? (y/n)', 'y')
+    search['full_time'] = ft.lower().startswith('y')
+    rm = _prompt(search_existing, 'remote', 'Remote only? (y/n)', 'n')
+    search['remote'] = rm.lower().startswith('y')
+    cfg['search'] = search
+
+    cfg['max_applications'] = int(_prompt(existing, 'max_applications',
+                                          'Max applications per run', '50'))
+    cfg['log_path'] = _prompt(existing, 'log_path', 'Log file path',
+                              'applied_jobs_log.csv')
+    cfg['applied_jobs_path'] = _prompt(
+        existing, 'applied_jobs_path', 'Applied jobs file',
+        DEFAULT_APPLIED_JOBS_PATH)
+
+    return cfg
+
+
+def load_config(path: str = CONFIG_PATH) -> dict:
+    """Load configuration, prompting the user if necessary."""
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        print(f"Loaded configuration from {path}.")
+        change = input("Do you want to edit these settings? (y/N): ").strip().lower()
+        if change == 'y':
+            cfg = prompt_for_config(cfg)
+            save_config(cfg, path)
+    else:
+        print(f"Configuration file '{path}' not found. Let's create one.")
+        cfg = prompt_for_config()
+        save_config(cfg, path)
+    return cfg
+=======
 APPLIED_JOBS_PATH = 'applied_jobs.txt'
 
 
 def load_config(path: str = CONFIG_PATH) -> dict:
     """Load configuration from a JSON file."""
     with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
 
 
 def setup_driver() -> webdriver.Chrome:
@@ -73,14 +142,21 @@ def search_jobs(driver: webdriver.Chrome, search_params: dict) -> None:
     # Additional filters can be applied here if needed
 
 
+
+def load_applied_jobs(path: str = DEFAULT_APPLIED_JOBS_PATH) -> set:
+=======
 def load_applied_jobs(path: str = APPLIED_JOBS_PATH) -> set:
+
     if not os.path.exists(path):
         return set()
     with open(path, 'r', encoding='utf-8') as f:
         return set(line.strip() for line in f if line.strip())
 
 
+def save_applied_job(job_id: str, path: str = DEFAULT_APPLIED_JOBS_PATH) -> None:
+=======
 def save_applied_job(job_id: str, path: str = APPLIED_JOBS_PATH) -> None:
+
     with open(path, 'a', encoding='utf-8') as f:
         f.write(job_id + '\n')
 
@@ -149,7 +225,12 @@ def apply_to_job(driver: webdriver.Chrome, job_link: str, config: dict) -> bool:
 
 def main():
     config = load_config()
+
+    applied_jobs_path = config.get('applied_jobs_path', DEFAULT_APPLIED_JOBS_PATH)
+    applied_jobs = load_applied_jobs(applied_jobs_path)
+=======
     applied_jobs = load_applied_jobs()
+
     driver = setup_driver()
     try:
         login(driver, config['indeed_email'], config['indeed_password'])
@@ -179,7 +260,11 @@ def main():
                 status = 'failed'
                 if apply_to_job(driver, link, config):
                     applied_jobs.add(job_id)
+
+                    save_applied_job(job_id, applied_jobs_path)
+=======
                     save_applied_job(job_id)
+
                     status = 'applied'
                     applied_count += 1
                 save_log(log_path, {
