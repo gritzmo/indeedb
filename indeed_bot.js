@@ -6,6 +6,7 @@ const path = require('path');
 const readline = require('readline');
 const csv = require('csv');
 const axios = require('axios');
+const notifier = require('node-notifier');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
@@ -24,6 +25,14 @@ function prompt(question) {
 async function humanDelay(min = 1000, max = 3000) {
   const time = Math.random() * (max - min) + min;
   await new Promise((r) => setTimeout(r, time));
+}
+
+function sendNotification(title, message) {
+  try {
+    notifier.notify({ title, message, timeout: 5 });
+  } catch (e) {
+    // best effort, non-fatal
+  }
 }
 
 function loadConfig() {
@@ -88,6 +97,36 @@ function parseSalary(text) {
   return match ? parseFloat(match[1].replace(/,/g, '')) : null;
 }
 
+async function parseJobType(page) {
+  // attempt to extract job type label
+  const text = await page.evaluate(() => {
+    const labels = Array.from(document.querySelectorAll('*')).filter((el) =>
+      /Job Type/i.test(el.textContent || '')
+    );
+    for (const label of labels) {
+      const sib = label.nextElementSibling;
+      if (sib) return sib.textContent;
+    }
+    return document.body.innerText;
+  });
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  if (lower.includes('full-time')) return 'full-time';
+  if (lower.includes('part-time')) return 'part-time';
+  if (lower.includes('contract')) return 'contract';
+  if (lower.includes('temporary')) return 'temporary';
+  if (lower.includes('internship')) return 'internship';
+  return null;
+}
+
+function isValidJobType(type) {
+  if (!type) return false;
+  const t = type.toLowerCase();
+  if (t.includes('full-time') || t.includes('part-time')) return true;
+  if (t.includes('contract') || t.includes('temporary') || t.includes('internship')) return false;
+  return false;
+}
+
 async function ensureLogin(page) {
   try {
     await page.waitForSelector('a[href*="login"]', { timeout: 5000 });
@@ -99,7 +138,7 @@ async function ensureLogin(page) {
   }
 }
 
-async function getEasyApplyJobs(page, seen) {
+async function getEasyApplyJobs(page, seen, cfg, city) {
   // Evaluate the search results page in the browser context
   const jobs = await page.evaluate(() => {
     const nodes = Array.from(document.querySelectorAll('a[data-jk]'));
@@ -113,7 +152,11 @@ async function getEasyApplyJobs(page, seen) {
         location: el.querySelector('.companyLocation')?.innerText.trim() || '',
       }));
   });
-  return jobs.filter((job) => job.id && !seen.has(job.id));
+  return jobs.filter((job) => {
+    if (!job.id || seen.has(job.id)) return false;
+    if (job.location && cfg.locations && !job.location.includes(city)) return false;
+    return true;
+  });
 }
 
 async function fillBasicFields(page) {
@@ -183,6 +226,13 @@ async function applyToJob(browser, job, cfg, seen) {
       return result;
     }
 
+    const jobType = await parseJobType(page);
+    if (!isValidJobType(jobType)) {
+      console.log(`Skipping job - type is ${jobType || 'unknown'}`);
+      await page.close();
+      return result;
+    }
+
     // check job location
     const jobLocation = await page.$eval('.companyLocation', (el) => el.textContent).catch(() => job.location);
     if (cfg.userAddress) {
@@ -218,7 +268,10 @@ async function applyToJob(browser, job, cfg, seen) {
 
   await page.close();
   if (result.status === 'Applied') {
-    seen.add(job.id); saveAppliedJob(job.id);
+    seen.add(job.id);
+    saveAppliedJob(job.id);
+    const msg = `${job.title} at ${job.company}${result.distance ? ` - ${result.distance} mi away` : ''}`;
+    sendNotification('Indeed Bot: Application Sent', msg);
   }
   return result;
 }
@@ -260,7 +313,7 @@ async function main() {
     console.log(`Searching jobs in ${city}`);
     await searchCity(page, city);
 
-    let jobs = await getEasyApplyJobs(page, applied);
+    let jobs = await getEasyApplyJobs(page, applied, cfg, city);
     for (const job of jobs) {
       if (count >= cfg.max_applications) break;
       const { status, distance } = await applyToJob(browser, job, cfg, applied);
